@@ -39,6 +39,183 @@
 
 // export default contractABI;
 
+// // src/contractABI.ts - Complete ABI for your ShrampNFT contract
+// const contractABI = [
+//   {
+//     "inputs": [
+//       {
+//         "internalType": "string",
+//         "name": "baseURI",
+//         "type": "string"
+//       }
+//     ],
+//     "stateMutability": "nonpayable",
+//     "type": "constructor"
+//   },
+//   {
+//     "anonymous": false,
+//     "inputs": [
+//       {
+//         "indexed": true,
+//         "internalType": "address",
+//         "name": "minter",
+//         "type": "address"
+//       },
+//       {
+//         "indexed": true,
+//         "internalType": "uint256",
+//         "name": "tokenId",
+//         "type": "uint256"
+//       }
+//     ],
+//     "name": "NFTMinted",
+//     "type": "event"
+//   },
+//   {
+//     "inputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "quantity",
+//         "type": "uint256"
+//       }
+//     ],
+//     "name": "mint",
+//     "outputs": [],
+//     "stateMutability": "payable",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [],
+//     "name": "mintPrice",
+//     "outputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "",
+//         "type": "uint256"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [],
+//     "name": "maxSupply",
+//     "outputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "",
+//         "type": "uint256"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [],
+//     "name": "totalSupply",
+//     "outputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "",
+//         "type": "uint256"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [],
+//     "name": "nextTokenId",
+//     "outputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "",
+//         "type": "uint256"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [
+//       {
+//         "internalType": "address",
+//         "name": "",
+//         "type": "address"
+//       }
+//     ],
+//     "name": "mintedCount",
+//     "outputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "",
+//         "type": "uint256"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "tokenId",
+//         "type": "uint256"
+//       }
+//     ],
+//     "name": "tokenURI",
+//     "outputs": [
+//       {
+//         "internalType": "string",
+//         "name": "",
+//         "type": "string"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [
+//       {
+//         "internalType": "address",
+//         "name": "owner",
+//         "type": "address"
+//       }
+//     ],
+//     "name": "balanceOf",
+//     "outputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "",
+//         "type": "uint256"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   },
+//   {
+//     "inputs": [
+//       {
+//         "internalType": "uint256",
+//         "name": "tokenId",
+//         "type": "uint256"
+//       }
+//     ],
+//     "name": "ownerOf",
+//     "outputs": [
+//       {
+//         "internalType": "address",
+//         "name": "",
+//         "type": "address"
+//       }
+//     ],
+//     "stateMutability": "view",
+//     "type": "function"
+//   }
+// ];
+
+// export default contractABI;
+
 // src/contractABI.ts - Complete ABI for your ShrampNFT contract
 const contractABI = [
   {
@@ -72,7 +249,13 @@ const contractABI = [
     "type": "event"
   },
   {
-    "inputs": [],
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "quantity",
+        "type": "uint256"
+      }
+    ],
     "name": "mint",
     "outputs": [],
     "stateMutability": "payable",
@@ -94,6 +277,19 @@ const contractABI = [
   {
     "inputs": [],
     "name": "maxSupply",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "maxPerWallet",
     "outputs": [
       {
         "internalType": "uint256",
