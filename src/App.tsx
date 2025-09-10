@@ -4,12 +4,9 @@ import type { Provider, Signer } from "ethers";
 import contractABI from "./contractABI";
 import bg from "./assets/monad-bg-3.jpeg";
 
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS as string;
-if (!CONTRACT_ADDRESS) {
-  throw new Error(
-    "VITE_CONTRACT_ADDRESS is not set. Configure it in your Vercel env."
-  );
-}
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS as
+  | string
+  | undefined;
 
 // Removed mock images; rely on real on-chain data
 
@@ -26,6 +23,7 @@ declare global {
 }
 
 export default function App() {
+  const isConfigured = Boolean(CONTRACT_ADDRESS);
   const [account, setAccount] = useState<string | null>(null);
   const [minting, setMinting] = useState(false);
   const [totalSupply, setTotalSupply] = useState<number>(0);
@@ -37,7 +35,16 @@ export default function App() {
   const [contractMaxPerWallet, setContractMaxPerWallet] = useState<number>(2);
 
   function getContract(providerOrSigner: Provider | Signer) {
-    return new Contract(CONTRACT_ADDRESS, contractABI, providerOrSigner);
+    if (!CONTRACT_ADDRESS) {
+      throw new Error(
+        "VITE_CONTRACT_ADDRESS is not set. Configure it in your Vercel env."
+      );
+    }
+    return new Contract(
+      CONTRACT_ADDRESS as string,
+      contractABI,
+      providerOrSigner
+    );
   }
 
   const refreshContractData = useCallback(async () => {
@@ -225,6 +232,18 @@ export default function App() {
     >
       <div className="w-full max-w-4xl px-4 py-6 md:p-8 bg-black/60 backdrop-blur-sm mt-6 md:mt-12 rounded-lg md:rounded-xl">
         <h1 className="text-3xl md:text-4xl font-bold mb-2">Shramp NFT</h1>
+        {!isConfigured && (
+          <div className="mt-2 mb-4 p-3 bg-red-600/70 rounded">
+            <div className="text-sm font-semibold">
+              Environment not configured
+            </div>
+            <div className="text-xs text-red-50 mt-1">
+              Set <code>VITE_CONTRACT_ADDRESS</code> in your Vercel project
+              Environment Variables and redeploy. Optionally set{" "}
+              <code>VITE_MONAD_RPC_URL</code>.
+            </div>
+          </div>
+        )}
         <p className="text-xs md:text-sm text-gray-300 mb-4">
           Public mint ⭐ max 2 per wallet ⭐
         </p>
