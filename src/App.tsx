@@ -73,9 +73,21 @@ export default function App() {
 
       // Get user's minted count if wallet is connected
       if (account) {
-        const minted = await contract.mintedCount(account);
-        console.log("User minted count from contract:", Number(minted));
-        setUserMintedCount(Number(minted));
+        try {
+          const minted = await contract.mintedCount(account);
+          console.log("User minted count from contract:", Number(minted));
+          setUserMintedCount(Number(minted));
+        } catch (mcErr) {
+          // Fallback to ERC721 balance if mintedCount() is not present
+          try {
+            const bal = await contract.balanceOf(account);
+            console.log("Fallback balanceOf as minted count:", Number(bal));
+            setUserMintedCount(Number(bal));
+          } catch (balErr) {
+            console.warn("Failed to read user minted count", mcErr, balErr);
+            setUserMintedCount(0);
+          }
+        }
       }
     } catch (e) {
       console.error("refreshContractData err", e);
@@ -139,8 +151,20 @@ export default function App() {
 
   async function mintNFT() {
     if (!window.ethereum) return alert("Install MetaMask");
-    if (mintQuantity < 1 || mintQuantity > 2)
-      return alert("Quantity must be 1-2");
+    const remainingAllowance = Math.max(
+      0,
+      contractMaxPerWallet - userMintedCount
+    );
+    const remainingSupply = Math.max(0, maxSupply - totalSupply);
+    if (remainingAllowance <= 0) {
+      setStatus("Max per wallet reached");
+      return;
+    }
+    if (mintQuantity < 1 || mintQuantity > remainingAllowance)
+      return alert(`Quantity must be 1-${remainingAllowance}`);
+    if (mintQuantity > remainingSupply) {
+      return alert(`Only ${remainingSupply} left in supply`);
+    }
 
     // Check wallet restrictions
     console.log(
@@ -152,10 +176,10 @@ export default function App() {
       contractMaxPerWallet
     );
 
-    if (userMintedCount + mintQuantity > 2) {
+    if (userMintedCount + mintQuantity > contractMaxPerWallet) {
       return alert(
-        `You can only mint ${2 - userMintedCount} more NFT${
-          2 - userMintedCount === 1 ? "" : "s"
+        `You can only mint ${remainingAllowance} more NFT${
+          remainingAllowance === 1 ? "" : "s"
         }. You've already minted ${userMintedCount}.`
       );
     }
@@ -168,13 +192,57 @@ export default function App() {
       const contract = getContract(signer);
       const price = await contract.mintPrice(); // BigInt
       const totalPrice = price * BigInt(mintQuantity);
-      // call mint with quantity and value for multiple NFTs
-      const tx = await contract.mint(mintQuantity, { value: totalPrice });
-      setStatus("Waiting for confirmation...");
-      await tx.wait();
-      setStatus(`Minted ${mintQuantity} NFT${mintQuantity > 1 ? "s" : ""}!`);
-      // refresh supply
-      await refreshContractData();
+      const mintFn = contract.getFunction("mint");
+
+      // Dry-run and estimate to surface revert reasons before sending
+      try {
+        await mintFn.staticCall(mintQuantity, { value: totalPrice });
+        await mintFn.estimateGas(mintQuantity, { value: totalPrice });
+      } catch (simErr) {
+        const se = simErr as { shortMessage?: string; message?: string };
+        const msg = se?.shortMessage || se?.message || "Simulation failed";
+        const benignSimFailure =
+          /missing revert data|CALL_EXCEPTION|estimateGas/i.test(msg);
+        if (benignSimFailure) {
+          // Some RPCs cannot simulate with value; proceed to send and rely on node validation
+          console.warn("Simulation failed, proceeding to send:", msg);
+          setStatus("Simulation unavailable, submitting transaction...");
+        } else {
+          setStatus(msg);
+          throw simErr;
+        }
+      }
+
+      const attemptMint = async (attempt: number): Promise<void> => {
+        try {
+          const tx = await mintFn(mintQuantity, { value: totalPrice });
+          setStatus("Waiting for confirmation...");
+          await tx.wait();
+          setStatus(
+            `Minted ${mintQuantity} NFT${mintQuantity > 1 ? "s" : ""}!`
+          );
+          await refreshContractData();
+        } catch (err) {
+          const rpcErr = err as { code?: number; message?: string };
+          const isRateLimited =
+            rpcErr?.code === -32603 &&
+            typeof rpcErr?.message === "string" &&
+            /rate limit|rate limited|Request is being rate limited/i.test(
+              rpcErr.message
+            );
+          if (isRateLimited && attempt < 3) {
+            const delayMs = 500 * Math.pow(2, attempt); // 500, 1000, 2000
+            setStatus(
+              `RPC rate limited, retrying in ${Math.round(delayMs / 1000)}s...`
+            );
+            await new Promise((res) => setTimeout(res, delayMs));
+            return attemptMint(attempt + 1);
+          }
+          throw err;
+        }
+      };
+
+      await attemptMint(0);
     } catch (e) {
       console.error(e);
       const error = e as Error;
@@ -193,6 +261,10 @@ export default function App() {
     if (window.ethereum) {
       window.ethereum.on?.("accountsChanged", (accounts: string[]) => {
         setAccount(accounts[0] || null);
+        // refresh data for the new account
+        setTimeout(() => {
+          refreshContractData();
+        }, 0);
       });
     }
     // cleanup
@@ -245,7 +317,7 @@ export default function App() {
           </div>
         )}
         <p className="text-xs md:text-sm text-gray-300 mb-4">
-          Public mint ⭐ max 2 per wallet ⭐
+          Public mint ⭐ max {contractMaxPerWallet} per wallet ⭐
         </p>
 
         <div className="mb-4">
@@ -264,7 +336,7 @@ export default function App() {
         {account && (
           <div className="mb-4">
             <label className="block text-xs md:text-sm text-gray-300 mb-2">
-              Quantity (1-2):
+              Quantity (1-{contractMaxPerWallet}):
             </label>
             <div className="flex items-center gap-2">
               <button
@@ -277,11 +349,17 @@ export default function App() {
               <input
                 type="number"
                 min="1"
-                max={Math.min(2, 2 - userMintedCount)}
+                max={Math.min(
+                  contractMaxPerWallet,
+                  contractMaxPerWallet - userMintedCount
+                )}
                 value={mintQuantity}
                 onChange={(e) => {
                   const val = parseInt(e.target.value) || 1;
-                  const maxAllowed = Math.min(2, 2 - userMintedCount);
+                  const maxAllowed = Math.min(
+                    contractMaxPerWallet,
+                    contractMaxPerWallet - userMintedCount
+                  );
                   setMintQuantity(Math.min(maxAllowed, Math.max(1, val)));
                 }}
                 className="w-16 px-2 py-1 bg-gray-700 text-white rounded text-center"
@@ -289,18 +367,30 @@ export default function App() {
               <button
                 onClick={() =>
                   setMintQuantity(
-                    Math.min(2, Math.min(2 - userMintedCount, mintQuantity + 1))
+                    Math.min(
+                      contractMaxPerWallet,
+                      Math.min(
+                        contractMaxPerWallet - userMintedCount,
+                        mintQuantity + 1
+                      )
+                    )
                   )
                 }
-                disabled={mintQuantity >= Math.min(2, 2 - userMintedCount)}
+                disabled={
+                  mintQuantity >=
+                  Math.min(
+                    contractMaxPerWallet,
+                    contractMaxPerWallet - userMintedCount
+                  )
+                }
                 className="px-3 py-1 bg-gray-600 rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 +
               </button>
             </div>
             <div className="text-xs text-gray-400 mt-1">
-              You've minted: {userMintedCount}/2 NFTs
-              {userMintedCount >= 2 && (
+              You've minted: {userMintedCount}/{contractMaxPerWallet} NFTs
+              {userMintedCount >= contractMaxPerWallet && (
                 <span className="text-red-400 ml-2">(Max reached!)</span>
               )}
             </div>
@@ -322,16 +412,23 @@ export default function App() {
               </div>
               <button
                 onClick={mintNFT}
-                disabled={minting || userMintedCount >= 2}
+                disabled={
+                  minting ||
+                  userMintedCount >= contractMaxPerWallet ||
+                  contractMaxPerWallet - userMintedCount <= 0
+                }
                 className={`px-5 py-2 rounded w-full sm:w-auto ${
-                  minting || userMintedCount >= 2
+                  minting ||
+                  userMintedCount >= contractMaxPerWallet ||
+                  contractMaxPerWallet - userMintedCount <= 0
                     ? "bg-gray-600 cursor-not-allowed"
                     : "bg-green-500 hover:bg-green-600"
                 }`}
               >
                 {minting
                   ? "Minting..."
-                  : userMintedCount >= 2
+                  : userMintedCount >= contractMaxPerWallet ||
+                    contractMaxPerWallet - userMintedCount <= 0
                   ? "Max NFTs Minted"
                   : `Mint ${mintQuantity} (${formatMon(
                       (BigInt(mintPriceWei) * BigInt(mintQuantity)).toString()
@@ -345,6 +442,27 @@ export default function App() {
         </div>
 
         {/* Preview grid removed; wallet/marketplaces will display images from tokenURI */}
+
+        <div className="mt-6 md:mt-8 text-lg md:text-sm text-gray-300 w-full text-right">
+          created by{" "}
+          <a
+            href="https://x.com/Kae_XVI"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline text-white hover:text-blue-300"
+          >
+            @North
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              className="inline ml-1 align-[-2px] fill-current"
+            >
+              <path d="M23.954 4.569c-.885.392-1.83.656-2.825.775 1.014-.608 1.794-1.571 2.163-2.724-.95.564-2.005.974-3.127 1.195-.897-.957-2.178-1.554-3.594-1.554-2.723 0-4.932 2.208-4.932 4.932 0 .387.045.763.127 1.124-4.096-.205-7.73-2.168-10.164-5.149-.424.722-.666 1.561-.666 2.457 0 1.695.863 3.188 2.175 4.065-.8-.026-1.553-.245-2.21-.612v.062c0 2.367 1.683 4.342 3.918 4.792-.41.11-.844.17-1.29.17-.315 0-.624-.03-.924-.086.624 1.951 2.438 3.373 4.584 3.411-1.68 1.318-3.8 2.104-6.102 2.104-.396 0-.788-.023-1.175-.068 2.179 1.397 4.768 2.213 7.548 2.213 9.055 0 14.01-7.503 14.01-14.009 0-.213-.004-.425-.013-.636.962-.693 1.797-1.56 2.457-2.548z" />
+            </svg>
+          </a>
+        </div>
       </div>
     </div>
   );
