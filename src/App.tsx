@@ -84,11 +84,13 @@ export default function App() {
           await provider.send("wallet_switchEthereumChain", [
             { chainId: targetChainIdHex },
           ]);
-        } catch (switchErr: any) {
+        } catch (switchErr: unknown) {
+          const err = switchErr as { code?: number; message?: unknown };
           // If the chain is not added, try adding
           if (
-            switchErr?.code === 4902 ||
-            /Unrecognized chain ID/i.test(String(switchErr?.message))
+            err?.code === 4902 ||
+            (typeof err?.message === "string" &&
+              /Unrecognized chain ID/i.test(err.message))
           ) {
             await provider.send("wallet_addEthereumChain", [
               {
