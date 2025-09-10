@@ -4,9 +4,12 @@ import type { Provider, Signer } from "ethers";
 import contractABI from "./contractABI";
 import bg from "./assets/monad-bg-3.jpeg";
 
-const CONTRACT_ADDRESS =
-  import.meta.env.VITE_CONTRACT_ADDRESS ||
-  "0x550EE8dc2d0c581EaBd58bA4976e47DD028a989B";
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS as string;
+if (!CONTRACT_ADDRESS) {
+  throw new Error(
+    "VITE_CONTRACT_ADDRESS is not set. Configure it in your Vercel env."
+  );
+}
 
 // Removed mock images; rely on real on-chain data
 
@@ -72,10 +75,49 @@ export default function App() {
     }
   }, [account]);
 
+  async function ensureMonadNetwork(provider: BrowserProvider) {
+    const targetChainIdHex = "0x279F"; // 10143
+    try {
+      const current = await provider.send("eth_chainId", []);
+      if (current !== targetChainIdHex) {
+        try {
+          await provider.send("wallet_switchEthereumChain", [
+            { chainId: targetChainIdHex },
+          ]);
+        } catch (switchErr: any) {
+          // If the chain is not added, try adding
+          if (
+            switchErr?.code === 4902 ||
+            /Unrecognized chain ID/i.test(String(switchErr?.message))
+          ) {
+            await provider.send("wallet_addEthereumChain", [
+              {
+                chainId: targetChainIdHex,
+                chainName: "Monad Testnet",
+                nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
+                rpcUrls: [
+                  import.meta.env.VITE_MONAD_RPC_URL ||
+                    "https://testnet-rpc.monad.xyz",
+                ],
+                blockExplorerUrls: ["https://testnet.monadexplorer.com"],
+              },
+            ]);
+          } else {
+            throw switchErr;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("ensureMonadNetwork error", e);
+      throw e;
+    }
+  }
+
   async function connectWallet() {
     if (!window.ethereum) return alert("Install MetaMask");
     try {
       const provider = new BrowserProvider(window.ethereum);
+      await ensureMonadNetwork(provider);
       const accounts = await provider.send("eth_requestAccounts", []);
       setAccount(accounts[0]);
       setStatus("Wallet connected");
